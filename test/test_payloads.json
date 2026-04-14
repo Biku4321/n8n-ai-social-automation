@@ -1,0 +1,75 @@
+{
+  "test_cases": [
+    {
+      "id": "TC-001",
+      "name": "Tech Product Launch — Standard Success",
+      "description": "Tests full end-to-end flow with a tech brand",
+      "input": {
+        "topic": "Launching our new AI-powered productivity app that helps remote teams collaborate better",
+        "brand": "TeamSync AI",
+        "tone": "professional",
+        "platforms": ["facebook", "instagram"]
+      },
+      "expected": {
+        "gemini_success": true,
+        "image_generated": true,
+        "facebook_status": "SUCCESS",
+        "instagram_status": "SUCCESS",
+        "overall_status": "PARTIAL_SUCCESS",
+        "sheets_logged": true
+      }
+    },
+    {
+      "id": "TC-002",
+      "name": "Missing Topic — Error Handling",
+      "description": "Tests that missing 'topic' field is caught and logged to Error Logs sheet",
+      "input": {
+        "brand": "TestBrand",
+        "tone": "casual"
+      },
+      "expected": {
+        "gemini_success": false,
+        "image_generated": false,
+        "facebook_status": "NOT_ATTEMPTED",
+        "instagram_status": "NOT_ATTEMPTED",
+        "overall_status": "ERROR",
+        "error_message": "Missing required field: topic",
+        "sheets_logged": true,
+        "sheet_tab": "Error Logs"
+      }
+    },
+    {
+      "id": "TC-003",
+      "name": "Lifestyle Brand — Skincare",
+      "description": "Tests warm tone, brand voice, and correct Instagram hashtag count (10)",
+      "input": {
+        "topic": "Handmade organic skincare products using Himalayan herbs, perfect for winter skin care routine",
+        "brand": "Himalaya Glow",
+        "tone": "warm and personal",
+        "platforms": ["facebook", "instagram"]
+      },
+      "expected": {
+        "gemini_success": true,
+        "image_generated": true,
+        "facebook_status": "SUCCESS",
+        "instagram_status": "SUCCESS",
+        "overall_status": "PARTIAL_SUCCESS",
+        "instagram_hashtag_count": 10,
+        "brand_in_caption": true,
+        "sheets_logged": true
+      }
+    }
+  ],
+  "how_to_run": {
+    "step_1": "Start n8n: npx n8n OR docker-compose up",
+    "step_2": "Import workflow JSON into n8n",
+    "step_3": "Activate the workflow (toggle top right)",
+    "step_4": "Copy a test case input below and run the curl command",
+    "curl_command": "curl -X POST http://localhost:5678/webhook/social-media-trigger -H 'Content-Type: application/json' -d '<PASTE_INPUT_JSON_HERE>'"
+  },
+  "quick_curl": {
+    "TC-001": "curl -X POST http://localhost:5678/webhook/social-media-trigger -H 'Content-Type: application/json' -d '{\"topic\": \"Launching our new AI-powered productivity app that helps remote teams collaborate better\", \"brand\": \"TeamSync AI\", \"tone\": \"professional\", \"platforms\": [\"facebook\", \"instagram\"]}'",
+    "TC-002": "curl -X POST http://localhost:5678/webhook/social-media-trigger -H 'Content-Type: application/json' -d '{\"brand\": \"TestBrand\", \"tone\": \"casual\"}'",
+    "TC-003": "curl -X POST http://localhost:5678/webhook/social-media-trigger -H 'Content-Type: application/json' -d '{\"topic\": \"Handmade organic skincare products using Himalayan herbs, perfect for winter skin care routine\", \"brand\": \"Himalaya Glow\", \"tone\": \"warm and personal\", \"platforms\": [\"facebook\", \"instagram\"]}'"
+  }
+}

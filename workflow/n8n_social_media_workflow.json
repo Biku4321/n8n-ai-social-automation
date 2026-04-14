@@ -1,0 +1,631 @@
+{
+  "name": "AI Social Media Automation - Gemini + Leonardo AI",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "social-media-trigger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "social-media-trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Validate and extract input\nconst body = $input.first().json.body || $input.first().json;\n\nif (!body.topic) {\n  throw new Error('Missing required field: topic');\n}\n\nconst topic = body.topic;\nconst brand = body.brand || 'Your Brand';\nconst tone = body.tone || 'professional';\nconst platforms = body.platforms || ['facebook', 'instagram', 'linkedin'];\nconst schedule_time = body.schedule_time || null;\n\nreturn [{\n  json: {\n    topic,\n    brand,\n    tone,\n    platforms,\n    schedule_time,\n    timestamp: new Date().toISOString(),\n    run_id: 'run_' + Date.now()\n  }\n}];"
+      },
+      "id": "input-validator",
+      "name": "Input Validator",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $credentials.apiKey }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": []
+        },
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"You are a social media content expert. Generate content for the following topic.\\n\\nTopic: {{ $json.topic }}\\nBrand: {{ $json.brand }}\\nTone: {{ $json.tone }}\\n\\nGenerate a JSON response with EXACTLY this structure (no markdown, pure JSON):\\n{\\n  \\\"facebook\\\": {\\n    \\\"caption\\\": \\\"engaging Facebook caption (150-200 words)\\\",\\n    \\\"hashtags\\\": [\\\"hashtag1\\\", \\\"hashtag2\\\", \\\"hashtag3\\\", \\\"hashtag4\\\", \\\"hashtag5\\\"],\\n    \\\"cta\\\": \\\"call to action text\\\"\\n  },\\n  \\\"instagram\\\": {\\n    \\\"caption\\\": \\\"Instagram caption with emojis (100-150 words)\\\",\\n    \\\"hashtags\\\": [\\\"hashtag1\\\", \\\"hashtag2\\\", \\\"hashtag3\\\", \\\"hashtag4\\\", \\\"hashtag5\\\", \\\"hashtag6\\\", \\\"hashtag7\\\", \\\"hashtag8\\\", \\\"hashtag9\\\", \\\"hashtag10\\\"],\\n    \\\"cta\\\": \\\"call to action text\\\"\\n  },\\n  \\\"linkedin\\\": {\\n    \\\"caption\\\": \\\"professional LinkedIn post (200-250 words)\\\",\\n    \\\"hashtags\\\": [\\\"hashtag1\\\", \\\"hashtag2\\\", \\\"hashtag3\\\"],\\n    \\\"cta\\\": \\\"professional call to action\\\"\\n  },\\n  \\\"youtube\\\": {\\n    \\\"title\\\": \\\"YouTube video title\\\",\\n    \\\"description\\\": \\\"YouTube video description (100-150 words)\\\",\\n    \\\"hashtags\\\": [\\\"hashtag1\\\", \\\"hashtag2\\\", \\\"hashtag3\\\", \\\"hashtag4\\\", \\\"hashtag5\\\"],\\n    \\\"cta\\\": \\\"subscribe and like CTA\\\"\\n  },\\n  \\\"image_prompt\\\": \\\"detailed DALL-E/Leonardo AI image generation prompt for this topic\\\",\\n  \\\"video_prompt\\\": \\\"optional video generation prompt\\\"\\n}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"temperature\": 0.8,\n    \"topK\": 40,\n    \"topP\": 0.95,\n    \"maxOutputTokens\": 2048\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "gemini-content-generator",
+      "name": "Gemini Content Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "gemini-api-key",
+          "name": "Gemini API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Gemini response\nconst response = $input.first().json;\n\ntry {\n  const content = response.candidates[0].content.parts[0].text;\n  \n  // Clean JSON from markdown if present\n  let cleanJson = content.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  \n  const parsed = JSON.parse(cleanJson);\n  \n  // Pass through original input data too\n  const inputData = $('Input Validator').first().json;\n  \n  return [{\n    json: {\n      ...inputData,\n      content: parsed,\n      image_prompt: parsed.image_prompt,\n      video_prompt: parsed.video_prompt || null,\n      gemini_success: true\n    }\n  }];\n} catch (error) {\n  throw new Error('Failed to parse Gemini response: ' + error.message + ' | Raw: ' + JSON.stringify(response).substring(0, 500));\n}"
+      },
+      "id": "parse-gemini-response",
+      "name": "Parse Gemini Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://cloud.leonardo.ai/api/rest/v1/generations",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"prompt\": \"{{ $json.image_prompt }}\",\n  \"modelId\": \"b24e16ff-06e3-43eb-8d33-4416c2d75876\",\n  \"width\": 1024,\n  \"height\": 1024,\n  \"num_images\": 1,\n  \"guidance_scale\": 7,\n  \"num_inference_steps\": 20,\n  \"public\": false\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "leonardo-generate-image",
+      "name": "Leonardo AI - Generate Image",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "leonardo-api-key",
+          "name": "Leonardo AI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "id": "wait-for-image",
+      "name": "Wait for Image Generation",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://cloud.leonardo.ai/api/rest/v1/generations/{{ $('Leonardo AI - Generate Image').first().json.sdGenerationJob.generationId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "fetch-image-result",
+      "name": "Fetch Image Result",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "leonardo-api-key",
+          "name": "Leonardo AI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract image URL from Leonardo response\nconst leonardoResponse = $input.first().json;\nconst contentData = $('Parse Gemini Response').first().json;\n\nlet imageUrl = null;\ntry {\n  const generations = leonardoResponse.generations_by_pk;\n  if (generations && generations.generated_images && generations.generated_images.length > 0) {\n    imageUrl = generations.generated_images[0].url;\n  }\n} catch (e) {\n  console.log('Could not extract image URL:', e.message);\n}\n\nreturn [{\n  json: {\n    ...contentData,\n    image_url: imageUrl,\n    generation_id: $('Leonardo AI - Generate Image').first().json.sdGenerationJob?.generationId,\n    image_generated: imageUrl !== null\n  }\n}];"
+      },
+      "id": "extract-image-url",
+      "name": "Extract Image URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge content data with image URL\nconst contentData = $('Parse Gemini Response').first().json;\nconst imageData = $input.first().json;\n\nreturn [{\n  json: {\n    ...contentData,\n    image_url: imageData.image_url || 'https://placeholder.com/1024x1024',\n    image_generated: imageData.image_generated || false,\n    generation_id: imageData.generation_id || null\n  }\n}];"
+      },
+      "id": "merge-content-image",
+      "name": "Merge Content + Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v18.0/{{ $credentials.pageId }}/photos",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $credentials.accessToken }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "message",
+              "value": "={{ $json.content.facebook.caption + '\\n\\n' + $json.content.facebook.hashtags.map(h => '#' + h).join(' ') + '\\n\\n' + $json.content.facebook.cta }}"
+            },
+            {
+              "name": "published",
+              "value": "=true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "post-to-facebook",
+      "name": "Post to Facebook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 180],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "facebook-api",
+          "name": "Facebook Page API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.instagram.com/v18.0/{{ $credentials.igUserId }}/media",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $credentials.accessToken }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.image_url }}"
+            },
+            {
+              "name": "caption",
+              "value": "={{ $json.content.instagram.caption + '\\n\\n' + $json.content.instagram.hashtags.map(h => '#' + h).join(' ') + '\\n\\n' + $json.content.instagram.cta }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "create-instagram-container",
+      "name": "Instagram - Create Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 360],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "instagram-api",
+          "name": "Instagram Graph API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "wait-instagram",
+      "name": "Wait Instagram Container",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [2440, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.instagram.com/v18.0/{{ $credentials.igUserId }}/media_publish",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "={{ $credentials.accessToken }}"
+            },
+            {
+              "name": "creation_id",
+              "value": "={{ $('Instagram - Create Container').first().json.id }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "publish-instagram",
+      "name": "Instagram - Publish",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2660, 360],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "instagram-api",
+          "name": "Instagram Graph API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all posting results\nconst mergedData = $('Merge Content + Image').first().json;\n\nlet fbResult = null;\nlet igResult = null;\n\ntry { fbResult = $('Post to Facebook').first().json; } catch(e) { fbResult = { error: e.message }; }\ntry { igResult = $('Instagram - Publish').first().json; } catch(e) { igResult = { error: e.message }; }\n\nconst facebookSuccess = fbResult && fbResult.id && !fbResult.error;\nconst instagramSuccess = igResult && igResult.id && !igResult.error;\n\nreturn [{\n  json: {\n    run_id: mergedData.run_id,\n    topic: mergedData.topic,\n    brand: mergedData.brand,\n    timestamp: mergedData.timestamp,\n    image_url: mergedData.image_url,\n    image_generated: mergedData.image_generated,\n    \n    // Platform content\n    facebook_caption: mergedData.content?.facebook?.caption || '',\n    facebook_hashtags: (mergedData.content?.facebook?.hashtags || []).join(', '),\n    facebook_cta: mergedData.content?.facebook?.cta || '',\n    \n    instagram_caption: mergedData.content?.instagram?.caption || '',\n    instagram_hashtags: (mergedData.content?.instagram?.hashtags || []).join(', '),\n    instagram_cta: mergedData.content?.instagram?.cta || '',\n    \n    linkedin_caption: mergedData.content?.linkedin?.caption || '',\n    linkedin_hashtags: (mergedData.content?.linkedin?.hashtags || []).join(', '),\n    linkedin_cta: mergedData.content?.linkedin?.cta || '',\n    \n    youtube_title: mergedData.content?.youtube?.title || '',\n    youtube_description: mergedData.content?.youtube?.description || '',\n    \n    // Posting status\n    facebook_post_id: fbResult?.id || '',\n    facebook_status: facebookSuccess ? 'SUCCESS' : 'FAILED',\n    facebook_error: facebookSuccess ? '' : JSON.stringify(fbResult),\n    \n    instagram_post_id: igResult?.id || '',\n    instagram_status: instagramSuccess ? 'SUCCESS' : 'FAILED',\n    instagram_error: instagramSuccess ? '' : JSON.stringify(igResult),\n    \n    overall_status: (facebookSuccess || instagramSuccess) ? 'PARTIAL_SUCCESS' : 'FAILED',\n    posted_at: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "aggregate-results",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Social Media Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "={{ $json.run_id }}",
+            "Timestamp": "={{ $json.timestamp }}",
+            "Topic": "={{ $json.topic }}",
+            "Brand": "={{ $json.brand }}",
+            "Image URL": "={{ $json.image_url }}",
+            "Image Generated": "={{ $json.image_generated }}",
+            "FB Caption": "={{ $json.facebook_caption }}",
+            "FB Hashtags": "={{ $json.facebook_hashtags }}",
+            "FB CTA": "={{ $json.facebook_cta }}",
+            "FB Post ID": "={{ $json.facebook_post_id }}",
+            "FB Status": "={{ $json.facebook_status }}",
+            "FB Error": "={{ $json.facebook_error }}",
+            "IG Caption": "={{ $json.instagram_caption }}",
+            "IG Hashtags": "={{ $json.instagram_hashtags }}",
+            "IG CTA": "={{ $json.instagram_cta }}",
+            "IG Post ID": "={{ $json.instagram_post_id }}",
+            "IG Status": "={{ $json.instagram_status }}",
+            "IG Error": "={{ $json.instagram_error }}",
+            "LinkedIn Caption": "={{ $json.linkedin_caption }}",
+            "LinkedIn Hashtags": "={{ $json.linkedin_hashtags }}",
+            "YouTube Title": "={{ $json.youtube_title }}",
+            "YouTube Description": "={{ $json.youtube_description }}",
+            "Overall Status": "={{ $json.overall_status }}",
+            "Posted At": "={{ $json.posted_at }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-to-google-sheets",
+      "name": "Log to Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [3100, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"run_id\": \"{{ $('Aggregate Results').first().json.run_id }}\",\n  \"topic\": \"{{ $('Aggregate Results').first().json.topic }}\",\n  \"image_url\": \"{{ $('Aggregate Results').first().json.image_url }}\",\n  \"facebook_status\": \"{{ $('Aggregate Results').first().json.facebook_status }}\",\n  \"instagram_status\": \"{{ $('Aggregate Results').first().json.instagram_status }}\",\n  \"overall_status\": \"{{ $('Aggregate Results').first().json.overall_status }}\",\n  \"logged_to_sheets\": true,\n  \"message\": \"Workflow completed successfully\"\n}",
+        "options": {}
+      },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3320, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Global error handler\nconst error = $input.first().json;\nconst inputData = $('Input Validator').first()?.json || {};\n\nreturn [{\n  json: {\n    run_id: inputData.run_id || 'ERROR_' + Date.now(),\n    timestamp: new Date().toISOString(),\n    topic: inputData.topic || 'Unknown',\n    brand: inputData.brand || 'Unknown',\n    overall_status: 'ERROR',\n    error_message: error.message || JSON.stringify(error),\n    error_node: $execution?.activeNodeName || 'Unknown',\n    image_url: '',\n    facebook_status: 'NOT_ATTEMPTED',\n    instagram_status: 'NOT_ATTEMPTED'\n  }\n}];"
+      },
+      "id": "error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 520]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_GOOGLE_SHEET_ID_HERE",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Error Logs",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Run ID": "={{ $json.run_id }}",
+            "Timestamp": "={{ $json.timestamp }}",
+            "Topic": "={{ $json.topic }}",
+            "Error Message": "={{ $json.error_message }}",
+            "Error Node": "={{ $json.error_node }}",
+            "Overall Status": "={{ $json.overall_status }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "log-error-sheets",
+      "name": "Log Error to Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1340, 520],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "google-sheets-oauth",
+          "name": "Google Sheets OAuth2"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Input Validator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Validator": {
+      "main": [
+        [
+          {
+            "node": "Gemini Content Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini Content Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse Gemini Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Gemini Response": {
+      "main": [
+        [
+          {
+            "node": "Leonardo AI - Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Leonardo AI - Generate Image": {
+      "main": [
+        [
+          {
+            "node": "Wait for Image Generation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Image Generation": {
+      "main": [
+        [
+          {
+            "node": "Fetch Image Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Image Result": {
+      "main": [
+        [
+          {
+            "node": "Extract Image URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Image URL": {
+      "main": [
+        [
+          {
+            "node": "Merge Content + Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Content + Image": {
+      "main": [
+        [
+          {
+            "node": "Post to Facebook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instagram - Create Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Facebook": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram - Create Container": {
+      "main": [
+        [
+          {
+            "node": "Wait Instagram Container",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Instagram Container": {
+      "main": [
+        [
+          {
+            "node": "Instagram - Publish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram - Publish": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Log to Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Log Error to Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromAList",
+    "errorWorkflow": "error-handler"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "n8nVersion": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "social-media",
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "name": "ai-automation",
+      "createdAt": "2025-01-01T00:00:00.000Z",
+      "updatedAt": "2025-01-01T00:00:00.000Z"
+    }
+  ]
+}
