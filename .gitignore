@@ -49,14 +49,14 @@ tmp/
 temp/
 .cache/
 
-# ─── Screenshots / recordings (too heavy for git) ────────────
+# ─── Screenshots / recordings ────────────
 screenshots/*.mp4
 screenshots/*.mov
 screenshots/*.avi
 # Keep .png screenshots (small, useful for docs)
 !screenshots/*.png
 
-# ─── Python (if any helper scripts) ─────────────────────────
+# ─── Python─────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
